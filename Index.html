@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Kehadiran Generus</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-analytics-compat.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
+        }
+        .header {
+            background: linear-gradient(135deg, #4a6baf 0%, #2a4a8d 100%);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #4a6baf 0%, #2a4a8d 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #3a5b9f 0%, #1a3a7d 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(42, 74, 141, 0.3);
+        }
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-secondary:hover {
+            background: linear-gradient(135deg, #5c656d 0%, #394047 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(73, 80, 87, 0.3);
+        }
+        .footer {
+            background: linear-gradient(135deg, #2a4a8d 0%, #1a3a7d 100%);
+        }
+        .student-row {
+            transition: all 0.3s ease;
+        }
+        .student-row:hover {
+            background-color: #f8f9fa;
+        }
+        .tab-active {
+            border-bottom: 3px solid #2a4a8d;
+            color: #2a4a8d;
+            font-weight: 600;
+        }
+        .tab {
+            transition: all 0.3s ease;
+        }
+        .tab:hover:not(.tab-active) {
+            background-color: #f1f3f5;
+            color: #4a6baf;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            padding: 16px 24px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            transform: translateY(-100px);
+            opacity: 0;
+            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+        }
+        .notification.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .delete-btn {
+            transition: all 0.2s ease;
+        }
+        .delete-btn:hover {
+            transform: scale(1.1);
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .pulse {
+            animation: pulse 1s infinite;
+        }
+        .modal {
+            transition: all 0.3s ease;
+        }
+        .modal-content {
+            transition: all 0.3s ease;
+            transform: scale(0.8);
+        }
+        .modal.show .modal-content {
+            transform: scale(1);
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .sync-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 8px 12px;
+            border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            z-index: 100;
+        }
+        .sync-indicator.online {
+            color: #10b981;
+        }
+        .sync-indicator.offline {
+            color: #f59e0b;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="text-center">
+            <div class="spinner mx-auto mb-3"></div>
+            <p class="text-gray-700">Memuat data...</p>
+        </div>
+    </div>
+
+    <!-- Sync Status Indicator -->
+    <div id="sync-indicator" class="sync-indicator hidden">
+        <span id="sync-status-icon" class="mr-2">⚪</span>
+        <span id="sync-status-text">Menyinkronkan...</span>
+    </div>
+
+    <header class="header text-white py-6 px-4 md:px-8">
+        <div class="container mx-auto">
+            <div class="text-center">
+                <h1 class="text-3xl md:text-4xl font-bold mb-1">Aplikasi Kehadiran Generus</h1>
+                <p class="text-lg md:text-xl font-medium">Generasi Penerus Pra-Remaja</p>
+                <p class="text-md md:text-lg">Kelompok Situbondo Kota</p>
+                <p class="text-sm md:text-md font-light">Tahun 2025</p>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow container mx-auto px-4 py-8">
+        <div id="main-content">
+            <!-- Navigation Tabs -->
+            <div class="flex mb-6 border-b">
+                <button id="tab-attendance" class="tab tab-active px-6 py-3 text-lg flex-1 text-center">Form Kehadiran</button>
+                <button id="tab-stats" class="tab px-6 py-3 text-lg flex-1 text-center">Statistik</button>
+            </div>
+
+            <!-- Attendance Form Section -->
+            <div id="attendance-section" class="card p-6 md:p-8">
+                <h2 class="text-2xl font-bold mb-6 text-gray-800">Daftar Kehadiran</h2>
+                
+                <form id="attendance-form" class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-gray-700 font-medium mb-2" for="date">Hari & Tanggal</label>
+                            <input type="date" id="date" name="date" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 font-medium mb-2" for="teacher">Nama Pengajar</label>
+                            <input type="text" id="teacher" name="teacher" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2" for="material">Materi Yang Disampaikan</label>
+                        <textarea id="material" name="material" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2" for="notes">Keterangan</label>
+                        <textarea id="notes" name="notes" rows="2" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">Daftar Kehadiran Generus</label>
+                        <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                            <div id="students-container" class="space-y-3">
+                                <div class="student-row flex flex-col md:flex-row md:items-center gap-3 p-2 rounded-lg">
+                                    <div class="flex-grow">
+                                        <input type="text" name="student_name[]" placeholder="Nama Lengkap Generus" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                    </div>
+                                    <div class="flex-shrink-0">
+                                        <select name="attendance[]" class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                            <option value="">Pilih Kehadiran</option>
+                                            <option value="Hadir">Hadir</option>
+                                            <option value="Izin">Izin</option>
+                                            <option value="Sakit">Sakit</option>
+                                            <option value="Tanpa Keterangan">Tanpa Keterangan</option>
+                                        </select>
+                                    </div>
+                                    <button type="button" class="remove-student hidden px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <button type="button" id="add-student" class="mt-3 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+                                </svg>
+                                Tambah Generus
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button type="submit" id="submit-btn" class="btn-primary px-6 py-3 text-white font-medium rounded-lg">
+                            Kirim ke Koordinator
+                        </button>
+                    </div>
+                </form>
+                
+                <div id="submission-success" class="hidden mt-4 p-4 bg-green-100 text-green-700 rounded-lg">
+                    <div class="flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        <p>Data kehadiran berhasil dikirim ke Koordinator!</p>
+                    </div>
+                </div>
+                
+                <div id="already-submitted" class="hidden mt-4 p-4 bg-yellow-100 text-yellow-700 rounded-lg">
+                    <div class="flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <p>Anda sudah mengisi daftar kehadiran hari ini.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Section -->
+            <div id="statistics-section" class="hidden">
+                <div class="flex mb-6 border-b">
+                    <button id="tab-student-stats" class="tab tab-active px-6 py-3 text-lg flex-1 text-center">Statistik Kehadiran Generus</button>
+                    <button id="tab-teacher-stats" class="tab px-6 py-3 text-lg flex-1 text-center">Statistik Guru Pengajar</button>
+                </div>
+
+                <!-- Student Statistics -->
+                <div id="student-stats" class="card p-6 md:p-8">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">Statistik Kehadiran Generus Pra-Remaja</h2>
+                    
+                    <div class="mb-8">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">Filter Bulan</label>
+                                <select id="student-month-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="all">Semua Bulan</option>
+                                    <option value="1">Januari</option>
+                                    <option value="2">Februari</option>
+                                    <option value="3">Maret</option>
+                                    <option value="4">April</option>
+                                    <option value="5">Mei</option>
+                                    <option value="6">Juni</option>
+                                    <option value="7">Juli</option>
+                                    <option value="8">Agustus</option>
+                                    <option value="9">September</option>
+                                    <option value="10">Oktober</option>
+                                    <option value="11">November</option>
+                                    <option value="12">Desember</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">Filter Tahun</label>
+                                <select id="student-year-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="2025">2025</option>
+                                    <option value="2026">2026</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="chart-container mb-8">
+                            <canvas id="student-chart"></canvas>
+                        </div>
+                        
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full bg-white border border-gray-200">
+                                <thead>
+                                    <tr>
+                                        <th class="px-4 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Hari & Tanggal</th>
+                                        <th class="px-4 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Lengkap Generus</th>
+                                        <th class="px-4 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Kehadiran</th>
+                                        <th class="px-4 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Guru Pengajar</th>
+                                        <th class="px-4 py-3 border-b-2 border-gray-200 bg-gray-100 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="student-stats-table" class="text-gray-700">
+                                    <tr>
+                                        <td colspan="5" class="px-4 py-8 text-center text-gray-500">Belum ada data kehadiran</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Teacher Statistics -->
+                <div id="teacher-stats" class="hidden card p-6 md:p-8">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">Statistik Guru Pengajar</h2>
+                    
+                    <div class="mb-8">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">Filter Bulan</label>
+                                <select id="teacher-month-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="all">Semua Bulan</option>
+                                    <option value="1">Januari</option>
+                                    <option value="2">Februari</option>
+                                    <option value="3">Maret</option>
+                                    <option value="4">April</option>
+                                    <option value="5">Mei</option>
+                                    <option value="6">Juni</option>
+                                    <option value="7">Juli</option>
+                                    <option value="8">Agustus</option>
+                                    <option value="9">September</option>
+                                    <option value="10">Oktober</option>
+                                    <option value="11">November</option>
+                                    <option value="12">Desember</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2">Filter Tahun</label>
+                                <select id="teacher-year-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="2025">2025</option>
+                                    <option value="2026">2026</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="chart-container mb-8">
+                            <canvas id="teacher-chart"></canvas>
+                        </div>
+                        
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full bg-white border border-gray-200">
+                                <thead>
+                                    <tr>
+                                        <th class="px-4 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Hari & Tanggal</th>
+                                        <th class="px-4 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Guru Pengajar</th>
+                                        <th class="px-4 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Materi Yang Disampaikan</th>
+                                        <th class="px-4 py-3 border-b-2 border-gray-200 bg-gray-100 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="teacher-stats-table" class="text-gray-700">
+                                    <tr>
+                                        <td colspan="4" class="px-4 py-8 text-center text-gray-500">Belum ada data kehadiran</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-6 flex justify-center">
+                    <button id="back-to-form" class="btn-secondary px-6 py-3 text-white font-medium rounded-lg">
+                        Kembali ke Halaman Awal
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer text-white py-4 px-4 md:px-8 mt-8">
+        <div class="container mx-auto text-center">
+            <p>Hak Cipta Koordinator Pra-Remaja</p>
+            <p class="text-sm">Tahun 2025</p>
+        </div>
+    </footer>
+
+    <!-- Success Notification -->
+    <div id="success-notification" class="notification bg-green-600 text-white flex items-center">
+        <div class="mr-4">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        </div>
+        <div>
+            <p class="font-bold text-lg">Data Berhasil Dikirim!!!</p>
+            <p>Alhamdulillahi JazaKumullahu Khoiro 🙏🙏🙏</p>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmation-modal" class="modal fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="modal-content bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-4 text-gray-800">Konfirmasi Hapus</h3>
+            <p id="delete-confirmation-text" class="mb-6 text-gray-600">Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.</p>
+            <div class="flex justify-end space-x-3">
+                <button id="cancel-delete" class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition">Batal</button>
+                <button id="confirm-delete" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">Hapus</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Firebase Configuration - Menggunakan konfigurasi yang Anda berikan
+        const firebaseConfig = {
+            apiKey: "AIzaSyA3KCtP-qdc-xL6W3jpiYwJZ7xVbGWjV7I",
+            authDomain: "absensi-praremaja2025.firebaseapp.com",
+            databaseURL: "https://absensi-praremaja2025-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "absensi-praremaja2025",
+            storageBucket: "absensi-praremaja2025.firebasestorage.app",
+            messagingSenderId: "416539829920",
+            appId: "1:416539829920:web:524efb01c9a7db39b78bc5",
+            measurementId: "G-Z5LK1PPN26"
+        };
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const analytics = firebase.analytics();
+        
+        // DOM Elements
+        const attendanceForm = document.getElementById('attendance-form');
+        const addStudentBtn = document.getElementById('add-student');
+        const studentsContainer = document.getElementById('students-container');
+        const submissionSuccess = document.getElementById('submission-success');
+        const alreadySubmitted = document.getElementById('already-submitted');
+        const successNotification = document.getElementById('success-notification');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const syncIndicator = document.getElementById('sync-indicator');
+        const syncStatusIcon = document.getElementById('sync-status-icon');
+        const syncStatusText = document.getElementById('sync-status-text');
+        
+        // Tab Navigation
+        const tabAttendance = document.getElementById('tab-attendance');
+        const tabStats = document.getElementById('tab-stats');
+        const attendanceSection = document.getElementById('attendance-section');
+        const statisticsSection = document.getElementById('statistics-section');
+        
+        // Statistics Tabs
+        const tabStudentStats = document.getElementById('tab-student-stats');
+        const tabTeacherStats = document.getElementById('tab-teacher-stats');
+        const studentStats = document.getElementById('student-stats');
+        const teacherStats = document.getElementById('teacher-stats');
+        const backToFormBtn = document.getElementById('back-to-form');
+        
+        // Confirmation Modal
+        const confirmationModal = document.getElementById('confirmation-modal');
+        const deleteConfirmationText = document.getElementById('delete-confirmation-text');
+        const cancelDeleteBtn = document.getElementById('cancel-delete');
+        const confirmDeleteBtn = document.getElementById('confirm-delete');
+        let deleteData = null;
+        
+        // Data Storage
+        let attendanceData = [];
+        let isOnline = navigator.onLine;
+        let pendingSyncs = [];
+        
+        // Check online status
+        function updateOnlineStatus() {
+            isOnline = navigator.onLine;
+            
+            if (isOnline) {
+                syncIndicator.classList.remove('hidden');
+                syncIndicator.classList.add('online');
+                syncIndicator.classList.remove('offline');
+                syncStatusIcon.textContent = "🟢";
+                syncStatusText.textContent = "Online - Data Tersinkron";
+                
+                // Try to sync any pending data
+                syncPendingData();
+            } else {
+                syncIndicator.classList.remove('hidden');
+                syncIndicator.classList.remove('online');
+                syncIndicator.classList.add('offline');
+                syncStatusIcon.textContent = "🟠";
+                syncStatusText.textContent = "Offline - Menggunakan Data Lokal";
+            }
+            
+            // Hide the indicator after 3 seconds
+            setTimeout(() => {
+                syncIndicator.classList.add('hidden');
+            }, 3000);
+        }
+        
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+        
+        // Load data from Firebase and local storage
+        async function loadData() {
+            loadingOverlay.classList.remove('hidden');
+            
+            try {
+                // First load from local storage
+                const localData = JSON.parse(localStorage.getItem('attendanceData')) || [];
+                attendanceData = localData;
+                
+                // If online, try to get data from Firebase
+                if (isOnline) {
+                    try {
+                        const snapshot = await database.ref('attendance').once('value');
+                        const firebaseData = snapshot.val();
+                        
+                        if (firebaseData) {
+                            // Convert object to array
+                            const dataArray = Object.values(firebaseData);
+                            
+                            // Merge with local data, prioritizing Firebase data
+                            const mergedData = mergeData(dataArray, localData);
+                            attendanceData = mergedData;
+                            
+                            // Update local storage with merged data
+                            localStorage.setItem('attendanceData', JSON.stringify(attendanceData));
+                            
+                            console.log('Data loaded from Firebase');
+                        }
+                    } catch (error) {
+                        console.error('Error loading data from Firebase:', error);
+                        // Continue with local data
+                    }
+                }
+                
+                // Update UI
+                updateStatistics();
+                checkIfSubmittedToday();
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                alert('Terjadi kesalahan saat memuat data. Silakan muat ulang halaman.');
+            } finally {
+                loadingOverlay.classList.add('hidden');
+                updateOnlineStatus();
+            }
+        }
+        
+        // Merge data from Firebase and local storage
+        function mergeData(firebaseData, localData) {
+            const mergedData = [...firebaseData];
+            
+            // Add any local entries that don't exist in Firebase
+            localData.forEach(localEntry => {
+                const exists = mergedData.some(fbEntry => fbEntry.id === localEntry.id);
+                if (!exists) {
+                    mergedData.push(localEntry);
+                    // Add to pending syncs to upload later
+                    pendingSyncs.push(localEntry);
+                }
+            });
+            
+            return mergedData;
+        }
+        
+        // Sync pending data to Firebase
+        async function syncPendingData() {
+            if (!isOnline || pendingSyncs.length === 0) return;
+            
+            syncStatusText.textContent = "Menyinkronkan data...";
+            
+            try {
+                for (const entry of pendingSyncs) {
+                    await database.ref('attendance/' + entry.id).set(entry);
+                }
+                
+                pendingSyncs = [];
+                syncStatusText.textContent = "Data tersinkron!";
+                
+                setTimeout(() => {
+                    syncIndicator.classList.add('hidden');
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Error syncing data:', error);
+                syncStatusText.textContent = "Gagal sinkronisasi";
+            }
+        }
+        
+        // Save data to storage
+        async function saveData(entry) {
+            // Add to local array
+            attendanceData.push(entry);
+            
+            // Save to local storage
+            localStorage.setItem('attendanceData', JSON.stringify(attendanceData));
+            
+            // If online, save to Firebase
+            if (isOnline) {
+                try {
+                    await database.ref('attendance/' + entry.id).set(entry);
+                } catch (error) {
+                    console.error('Error saving to Firebase:', error);
+                    // Add to pending syncs
+                    pendingSyncs.push(entry);
+                }
+            } else {
+                // Add to pending syncs
+                pendingSyncs.push(entry);
+            }
+        }
+        
+        // Delete data
+        async function deleteDataEntry(deleteInfo) {
+            if (deleteInfo.type === 'student') {
+                // Get the entry
+                const entry = attendanceData[deleteInfo.entryIndex];
+                
+                // If this is the only student in the entry, remove the entire entry
+                if (entry.students.length === 1) {
+                    // Remove from local array
+                    attendanceData.splice(deleteInfo.entryIndex, 1);
+                    
+                    // If online, remove from Firebase
+                    if (isOnline) {
+                        try {
+                            await database.ref('attendance/' + entry.id).remove();
+                        } catch (error) {
+                            console.error('Error deleting from Firebase:', error);
+                        }
+                    }
+                } else {
+                    // Otherwise, just remove this student
+                    entry.students.splice(deleteInfo.studentIndex, 1);
+                    
+                    // If online, update in Firebase
+                    if (isOnline) {
+                        try {
+                            await database.ref('attendance/' + entry.id).update(entry);
+                        } catch (error) {
+                            console.error('Error updating Firebase:', error);
+                        }
+                    }
+                }
+            } else if (deleteInfo.type === 'teacher') {
+                // Get the entry
+                const entry = attendanceData[deleteInfo.entryIndex];
+                
+                // Remove from local array
+                attendanceData.splice(deleteInfo.entryIndex, 1);
+                
+                // If online, remove from Firebase
+                if (isOnline) {
+                    try {
+                        await database.ref('attendance/' + entry.id).remove();
+                    } catch (error) {
+                        console.error('Error deleting from Firebase:', error);
+                    }
+                }
+            }
+            
+            // Update local storage
+            localStorage.setItem('attendanceData', JSON.stringify(attendanceData));
+        }
+        
+        // Check if already submitted today
+        function checkIfSubmittedToday() {
+            const today = new Date().toISOString().split('T')[0];
+            const submittedToday = attendanceData.some(entry => entry.date === today);
+            
+            if (submittedToday) {
+                attendanceForm.style.display = 'none';
+                alreadySubmitted.classList.remove('hidden');
+            } else {
+                attendanceForm.style.display = 'block';
+                alreadySubmitted.classList.add('hidden');
+            }
+        }
+        
+        // Add Student Row
+        addStudentBtn.addEventListener('click', () => {
+            const studentRow = document.createElement('div');
+            studentRow.className = 'student-row flex flex-col md:flex-row md:items-center gap-3 p-2 rounded-lg';
+            studentRow.innerHTML = `
+                <div class="flex-grow">
+                    <input type="text" name="student_name[]" placeholder="Nama Lengkap Generus" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                </div>
+                <div class="flex-shrink-0">
+                    <select name="attendance[]" class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                        <option value="">Pilih Kehadiran</option>
+                        <option value="Hadir">Hadir</option>
+                        <option value="Izin">Izin</option>
+                        <option value="Sakit">Sakit</option>
+                        <option value="Tanpa Keterangan">Tanpa Keterangan</option>
+                    </select>
+                </div>
+                <button type="button" class="remove-student px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            `;
+            studentsContainer.appendChild(studentRow);
+            
+            // Add event listener to remove button
+            const removeBtn = studentRow.querySelector('.remove-student');
+            removeBtn.addEventListener('click', () => {
+                studentRow.remove();
+                updateRemoveButtons();
+            });
+            
+            updateRemoveButtons();
+        });
+        
+        // Update remove buttons visibility
+        function updateRemoveButtons() {
+            const studentRows = document.querySelectorAll('.student-row');
+            const removeButtons = document.querySelectorAll('.remove-student');
+            
+            if (studentRows.length === 1) {
+                removeButtons[0].classList.add('hidden');
+            } else {
+                removeButtons.forEach(btn => btn.classList.remove('hidden'));
+            }
+        }
+        
+        // Show Success Notification
+        function showNotification() {
+            successNotification.classList.add('show');
+            setTimeout(() => {
+                successNotification.classList.remove('show');
+            }, 5000);
+        }
+        
+        // Form Submission
+        attendanceForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const date = document.getElementById('date').value;
+            const teacher = document.getElementById('teacher').value;
+            const material = document.getElementById('material').value;
+            const notes = document.getElementById('notes').value;
+            
+            const studentNames = Array.from(document.getElementsByName('student_name[]')).map(input => input.value);
+            const attendanceStatus = Array.from(document.getElementsByName('attendance[]')).map(select => select.value);
+            
+            // Create attendance entry
+            const attendanceEntry = {
+                date,
+                teacher,
+                material,
+                notes,
+                students: studentNames.map((name, index) => ({
+                    name,
+                    status: attendanceStatus[index],
+                    id: Date.now().toString() + '-' + index // Add unique ID for each student
+                })),
+                timestamp: new Date().toISOString(),
+                id: Date.now().toString() // Add unique ID for the entry
+            };
+            
+            // Save data
+            await saveData(attendanceEntry);
+            
+            // Send to Google Sheets (optional - can be removed if not needed)
+            try {
+                const formData = new FormData();
+                formData.append('date', date);
+                formData.append('teacher', teacher);
+                formData.append('material', material);
+                formData.append('notes', notes);
+                formData.append('students', JSON.stringify(attendanceEntry.students));
+                
+                // Uncomment if you have a Google Sheets API endpoint
+                /*
+                const response = await fetch('YOUR_GOOGLE_SHEETS_API_ENDPOINT', {
+                    method: 'POST',
+                    body: formData
+                });
+                */
+                
+                // Show success message and notification
+                attendanceForm.style.display = 'none';
+                submissionSuccess.classList.remove('hidden');
+                showNotification();
+                
+                // Update statistics
+                updateStatistics();
+                
+                // Reset form after 3 seconds and redirect to statistics
+                setTimeout(() => {
+                    attendanceForm.reset();
+                    showStatistics();
+                }, 3000);
+                
+            } catch (error) {
+                console.error('Error submitting form:', error);
+                alert('Terjadi kesalahan saat mengirim data. Data telah disimpan secara lokal dan akan dikirim saat koneksi tersedia.');
+                
+                // Update statistics
+                updateStatistics();
+                
+                // Reset form and redirect to statistics
+                attendanceForm.reset();
+                showStatistics();
+            }
+        });
+        
+        // Tab Navigation
+        tabAttendance.addEventListener('click', showAttendance);
+        tabStats.addEventListener('click', showStatistics);
+        
+        function showAttendance() {
+            tabAttendance.classList.add('tab-active');
+            tabStats.classList.remove('tab-active');
+            attendanceSection.classList.remove('hidden');
+            statisticsSection.classList.add('hidden');
+            checkIfSubmittedToday();
+        }
+        
+        function showStatistics() {
+            tabAttendance.classList.remove('tab-active');
+            tabStats.classList.add('tab-active');
+            attendanceSection.classList.add('hidden');
+            statisticsSection.classList.remove('hidden');
+            updateStatistics();
+        }
+        
+        // Statistics Tabs
+        tabStudentStats.addEventListener('click', () => {
+            tabStudentStats.classList.add('tab-active');
+            tabTeacherStats.classList.remove('tab-active');
+            studentStats.classList.remove('hidden');
+            teacherStats.classList.add('hidden');
+        });
+        
+        tabTeacherStats.addEventListener('click', () => {
+            tabStudentStats.classList.remove('tab-active');
+            tabTeacherStats.classList.add('tab-active');
+            studentStats.classList.add('hidden');
+            teacherStats.classList.remove('hidden');
+        });
+        
+        backToFormBtn.addEventListener('click', showAttendance);
+        
+        // Filter Events
+        document.getElementById('student-month-filter').addEventListener('change', updateStudentStatistics);
+        document.getElementById('student-year-filter').addEventListener('change', updateStudentStatistics);
+        document.getElementById('teacher-month-filter').addEventListener('change', updateTeacherStatistics);
+        document.getElementById('teacher-year-filter').addEventListener('change', updateTeacherStatistics);
+        
+        // Update Statistics
+        function updateStatistics() {
+            updateStudentStatistics();
+            updateTeacherStatistics();
+        }
+        
+        // Delete Entry Functions
+        function openDeleteModal(deleteInfo) {
+            deleteData = deleteInfo;
+            
+            // Set confirmation text based on what's being deleted
+            if (deleteInfo.type === 'student') {
+                const studentName = attendanceData[deleteInfo.entryIndex].students[deleteInfo.studentIndex].name;
+                const date = formatDate(attendanceData[deleteInfo.entryIndex].date);
+                deleteConfirmationText.textContent = `Apakah Anda yakin ingin menghapus data kehadiran "${studentName}" pada ${date}? Tindakan ini tidak dapat dibatalkan.`;
+            } else if (deleteInfo.type === 'teacher') {
+                const teacherName = attendanceData[deleteInfo.entryIndex].teacher;
+                const date = formatDate(attendanceData[deleteInfo.entryIndex].date);
+                deleteConfirmationText.textContent = `Apakah Anda yakin ingin menghapus data pengajaran "${teacherName}" pada ${date}? Tindakan ini tidak dapat dibatalkan.`;
+            }
+            
+            confirmationModal.classList.remove('hidden');
+            confirmationModal.classList.add('show');
+        }
+        
+        cancelDeleteBtn.addEventListener('click', () => {
+            confirmationModal.classList.remove('show');
+            confirmationModal.classList.add('hidden');
+            deleteData = null;
+        });
+        
+        confirmDeleteBtn.addEventListener('click', async () => {
+            if (deleteData) {
+                await deleteDataEntry(deleteData);
+                
+                // Update the statistics
+                updateStatistics();
+                
+                // Show notification
+                const deleteNotification = document.createElement('div');
+                deleteNotification.className = 'notification bg-red-600 text-white flex items-center show';
+                deleteNotification.innerHTML = `
+                    <div class="mr-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="font-bold text-lg">Data Berhasil Dihapus!</p>
+                        <p>Data telah dihapus dari sistem</p>
+                    </div>
+                `;
+                document.body.appendChild(deleteNotification);
+                
+                setTimeout(() => {
+                    deleteNotification.classList.remove('show');
+                    setTimeout(() => {
+                        document.body.removeChild(deleteNotification);
+                    }, 500);
+                }, 3000);
+            }
+            
+            // Close the modal
+            confirmationModal.classList.remove('show');
+            confirmationModal.classList.add('hidden');
+            deleteData = null;
+        });
+        
+        // Student Statistics
+        function updateStudentStatistics() {
+            const monthFilter = document.getElementById('student-month-filter').value;
+            const yearFilter = document.getElementById('student-year-filter').value;
+            
+            // Filter data based on month and year
+            let filteredData = [...attendanceData];
+            
+            if (yearFilter !== 'all') {
+                filteredData = filteredData.filter(entry => {
+                    const entryYear = new Date(entry.date).getFullYear().toString();
+                    return entryYear === yearFilter;
+                });
+            }
+            
+            if (monthFilter !== 'all') {
+                filteredData = filteredData.filter(entry => {
+                    const entryMonth = (new Date(entry.date).getMonth() + 1).toString();
+                    return entryMonth === monthFilter;
+                });
+            }
+            
+            // Update table
+            const tableBody = document.getElementById('student-stats-table');
+            tableBody.innerHTML = '';
+            
+            if (filteredData.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="5" class="px-4 py-8 text-center text-gray-500">Belum ada data kehadiran</td>`;
+                tableBody.appendChild(row);
+            } else {
+                filteredData.forEach((entry, entryIndex) => {
+                    const formattedDate = formatDate(entry.date);
+                    
+                    entry.students.forEach((student, studentIndex) => {
+                        const row = document.createElement('tr');
+                        row.className = 'border-b hover:bg-gray-50';
+                        row.innerHTML = `
+                            <td class="px-4 py-3">${formattedDate}</td>
+                            <td class="px-4 py-3">${student.name}</td>
+                            <td class="px-4 py-3">
+                                <span class="px-2 py-1 rounded-full text-xs font-semibold ${getStatusClass(student.status)}">
+                                    ${student.status}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3">${entry.teacher}</td>
+                            <td class="px-4 py-3 text-center">
+                                <button class="delete-btn text-red-500 hover:text-red-700" data-entry-index="${entryIndex}" data-student-index="${studentIndex}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                    </svg>
+                                </button>
+                            </td>
+                        `;
+                        tableBody.appendChild(row);
+                        
+                        // Add delete event listener
+                        const deleteBtn = row.querySelector('.delete-btn');
+                        deleteBtn.addEventListener('click', () => {
+                            const actualEntryIndex = attendanceData.findIndex(item => 
+                                item.id === entry.id
+                            );
+                            
+                            openDeleteModal({
+                                type: 'student',
+                                entryIndex: actualEntryIndex,
+                                studentIndex: studentIndex
+                            });
+                        });
+                    });
+                });
+            }
+            
+            // Update chart
+            updateStudentChart(filteredData);
+        }
+        
+        // Teacher Statistics
+        function updateTeacherStatistics() {
+            const monthFilter = document.getElementById('teacher-month-filter').value;
+            const yearFilter = document.getElementById('teacher-year-filter').value;
+            
+            // Filter data based on month and year
+            let filteredData = [...attendanceData];
+            
+            if (yearFilter !== 'all') {
+                filteredData = filteredData.filter(entry => {
+                    const entryYear = new Date(entry.date).getFullYear().toString();
+                    return entryYear === yearFilter;
+                });
+            }
+            
+            if (monthFilter !== 'all') {
+                filteredData = filteredData.filter(entry => {
+                    const entryMonth = (new Date(entry.date).getMonth() + 1).toString();
+                    return entryMonth === monthFilter;
+                });
+            }
+            
+            // Update table
+            const tableBody = document.getElementById('teacher-stats-table');
+            tableBody.innerHTML = '';
+            
+            if (filteredData.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="4" class="px-4 py-8 text-center text-gray-500">Belum ada data kehadiran</td>`;
+                tableBody.appendChild(row);
+            } else {
+                filteredData.forEach((entry, entryIndex) => {
+                    const formattedDate = formatDate(entry.date);
+                    
+                    const row = document.createElement('tr');
+                    row.className = 'border-b hover:bg-gray-50';
+                    row.innerHTML = `
+                        <td class="px-4 py-3">${formattedDate}</td>
+                        <td class="px-4 py-3">${entry.teacher}</td>
+                        <td class="px-4 py-3">${entry.material}</td>
+                        <td class="px-4 py-3 text-center">
+                            <button class="delete-btn text-red-500 hover:text-red-700" data-entry-index="${entryIndex}">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                    
+                    // Add delete event listener
+                    const deleteBtn = row.querySelector('.delete-btn');
+                    deleteBtn.addEventListener('click', () => {
+                        const actualEntryIndex = attendanceData.findIndex(item => 
+                            item.id === entry.id
+                        );
+                        
+                        openDeleteModal({
+                            type: 'teacher',
+                            entryIndex: actualEntryIndex
+                        });
+                    });
+                });
+            }
+            
+            // Update chart
+            updateTeacherChart(filteredData);
+        }
+        
+        // Student Chart
+        let studentChart = null;
+        function updateStudentChart(data) {
+            const ctx = document.getElementById('student-chart').getContext('2d');
+            
+            // Prepare data for chart
+            const statusCounts = {
+                'Hadir': 0,
+                'Izin': 0,
+                'Sakit': 0,
+                'Tanpa Keterangan': 0
+            };
+            
+            data.forEach(entry => {
+                entry.students.forEach(student => {
+                    statusCounts[student.status]++;
+                });
+            });
+            
+            // Destroy previous chart if exists
+            if (studentChart) {
+                studentChart.destroy();
+            }
+            
+            // Create new chart
+            studentChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(statusCounts),
+                    datasets: [{
+                        label: 'Jumlah Kehadiran',
+                        data: Object.values(statusCounts),
+                        backgroundColor: [
+                            'rgba(52, 211, 153, 0.7)',
+                            'rgba(96, 165, 250, 0.7)',
+                            'rgba(251, 191, 36, 0.7)',
+                            'rgba(239, 68, 68, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgb(16, 185, 129)',
+                            'rgb(59, 130, 246)',
+                            'rgb(245, 158, 11)',
+                            'rgb(220, 38, 38)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Statistik Kehadiran Generus',
+                            font: {
+                                size: 16
+                            }
+                        },
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Teacher Chart
+        let teacherChart = null;
+        function updateTeacherChart(data) {
+            const ctx = document.getElementById('teacher-chart').getContext('2d');
+            
+            // Prepare data for chart
+            const teacherCounts = {};
+            
+            data.forEach(entry => {
+                if (teacherCounts[entry.teacher]) {
+                    teacherCounts[entry.teacher]++;
+                } else {
+                    teacherCounts[entry.teacher] = 1;
+                }
+            });
+            
+            // Destroy previous chart if exists
+            if (teacherChart) {
+                teacherChart.destroy();
+            }
+            
+            // Create new chart
+            teacherChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(teacherCounts),
+                    datasets: [{
+                        data: Object.values(teacherCounts),
+                        backgroundColor: [
+                            'rgba(52, 211, 153, 0.7)',
+                            'rgba(96, 165, 250, 0.7)',
+                            'rgba(251, 191, 36, 0.7)',
+                            'rgba(239, 68, 68, 0.7)',
+                            'rgba(139, 92, 246, 0.7)',
+                            'rgba(236, 72, 153, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgb(16, 185, 129)',
+                            'rgb(59, 130, 246)',
+                            'rgb(245, 158, 11)',
+                            'rgb(220, 38, 38)',
+                            'rgb(124, 58, 237)',
+                            'rgb(219, 39, 119)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Frekuensi Mengajar Guru',
+                            font: {
+                                size: 16
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Helper Functions
+        function formatDate(dateString) {
+            const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+            const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+            
+            const date = new Date(dateString);
+            const dayName = days[date.getDay()];
+            const day = date.getDate();
+            const month = months[date.getMonth()];
+            const year = date.getFullYear();
+            
+            return `${dayName}, ${day} ${month} ${year}`;
+        }
+        
+        function getStatusClass(status) {
+            switch (status) {
+                case 'Hadir':
+                    return 'bg-green-100 text-green-800';
+                case 'Izin':
+                    return 'bg-blue-100 text-blue-800';
+                case 'Sakit':
+                    return 'bg-yellow-100 text-yellow-800';
+                case 'Tanpa Keterangan':
+                    return 'bg-red-100 text-red-800';
+                default:
+                    return 'bg-gray-100 text-gray-800';
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            updateRemoveButtons();
+        });
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'962bf3e0b67255d8',t:'MTc1MzExNDA2MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
